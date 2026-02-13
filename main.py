@@ -234,7 +234,7 @@ def main():
     
     # 4. 发送邮件
     print("\n[4/4] 发送邮件...")
-    recipient = "448795033@qq.com"
+    recipient = "liuxialu615@gmail.com"
     subject = f"AI博客每日摘要 - {datetime.now().strftime('%Y年%m月%d日')} ({len(posts)}篇新文章)"
     
     success = send_email(recipient, subject, html_content)
