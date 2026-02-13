@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI博客每日摘要系统
-自动抓取AI大牛博客，使用Claude API总结，并发送邮件
+AI博客每日摘要系统 - 测试版（无AI总结）
+自动抓取AI大牛博客并发送邮件
 """
 
 import feedparser
@@ -14,23 +14,15 @@ import os
 import json
 import time
 from bs4 import BeautifulSoup
-import anthropic
 
 # 配置信息
 BLOGS = {
     "Andrej Karpathy": "https://karpathy.github.io/feed.xml",
-    "Yann LeCun": "http://yann.lecun.com/ex/rss.xml",  # 可能需要调整
     "OpenAI Blog": "https://openai.com/blog/rss.xml",
     "Anthropic": "https://www.anthropic.com/news/rss.xml",
     "Distill.pub": "https://distill.pub/rss.xml",
     "Google AI Blog": "https://ai.googleblog.com/feeds/posts/default",
     "DeepMind Blog": "https://deepmind.google/blog/rss.xml",
-}
-
-# 备用：如果RSS不可用，使用这些直接URL
-BLOG_URLS = {
-    "Andrej Karpathy": "https://karpathy.github.io/",
-    "Yann LeCun": "http://yann.lecun.com/",
 }
 
 def fetch_blog_posts(hours=24):
@@ -67,53 +59,15 @@ def fetch_blog_posts(hours=24):
                         'blog': blog_name,
                         'title': entry.title if hasattr(entry, 'title') else 'Untitled',
                         'link': entry.link if hasattr(entry, 'link') else '',
-                        'content': clean_content[:2000],  # 限制长度
-                        'date': pub_date.strftime('%Y-%m-%d %H:%M') if pub_date else 'Unknown'
+                        'content': clean_content[:500],  # 限制长度
+                        'date': pub_date.strftime('%Y-%m-%d %H:%M') if pub_date else 'Unknown',
+                        'summary': clean_content[:200] + '...' if len(clean_content) > 200 else clean_content
                     })
-                    print(f"  ✓ 发现新文章: {entry.title}")
+                    print(f"  发现新文章: {entry.title}")
         
         except Exception as e:
-            print(f"  ✗ 抓取 {blog_name} 失败: {str(e)}")
+            print(f"  抓取 {blog_name} 失败: {str(e)}")
             continue
-    
-    return posts
-
-def summarize_with_claude(posts):
-    """使用Claude API总结文章"""
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
-    if not api_key:
-        print("警告: 未设置ANTHROPIC_API_KEY，跳过AI总结")
-        return posts
-    
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    for post in posts:
-        try:
-            print(f"正在总结: {post['title'][:50]}...")
-            
-            prompt = f"""请用中文总结以下AI博客文章，要求：
-1. 100-200字简短摘要
-2. 突出核心观点和关键技术
-3. 使用通俗易懂的语言
-
-文章标题: {post['title']}
-文章内容: {post['content']}
-
-请直接输出总结，不要其他内容。"""
-
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=500,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            post['summary'] = message.content[0].text
-            print(f"  ✓ 总结完成")
-            time.sleep(1)  # 避免API限流
-            
-        except Exception as e:
-            print(f"  ✗ 总结失败: {str(e)}")
-            post['summary'] = post['content'][:200] + "..."
     
     return posts
 
@@ -125,6 +79,7 @@ def create_email_html(posts):
     html = f"""
     <html>
     <head>
+        <meta charset="UTF-8">
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
             .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -138,25 +93,37 @@ def create_email_html(posts):
                          text-decoration: none; font-weight: bold; }}
             .footer {{ text-align: center; color: #999; margin-top: 30px; padding: 20px; 
                       border-top: 1px solid #ddd; }}
+            .note {{ background: #fff3cd; padding: 10px; margin: 20px 0; 
+                    border-left: 4px solid #ffc107; border-radius: 5px; }}
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>🤖 AI博客每日摘要</h1>
+            <h1>AI博客每日摘要</h1>
             <p>{datetime.now().strftime('%Y年%m月%d日')}</p>
         </div>
         
         <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
+            <div class="note">
+                <strong>测试模式：</strong> 当前使用测试版本，暂未启用AI总结功能。
+                显示文章原始摘要。充值Anthropic API后可启用AI智能总结。
+            </div>
+            
             <p>今日共收集到 <strong>{len(posts)}</strong> 篇AI领域新文章：</p>
     """
     
     for post in posts:
+        # 确保所有文本都是UTF-8编码
+        title = post['title'].encode('utf-8', errors='ignore').decode('utf-8')
+        blog = post['blog'].encode('utf-8', errors='ignore').decode('utf-8')
+        summary = post['summary'].encode('utf-8', errors='ignore').decode('utf-8')
+        
         html += f"""
             <div class="post">
-                <div class="post-title">{post['title']}</div>
-                <div class="post-meta">📝 来源: {post['blog']} | 📅 发布时间: {post['date']}</div>
+                <div class="post-title">{title}</div>
+                <div class="post-meta">来源: {blog} | 发布时间: {post['date']}</div>
                 <div class="post-summary">
-                    {post.get('summary', post['content'][:200] + '...')}
+                    {summary}
                 </div>
                 <a href="{post['link']}" class="post-link">阅读原文 →</a>
             </div>
@@ -164,8 +131,8 @@ def create_email_html(posts):
     
     html += """
         <div class="footer">
-            <p>此邮件由AI博客摘要系统自动生成</p>
-            <p>如需退订或修改配置，请联系管理员</p>
+            <p>此邮件由AI博客摘要系统自动生成（测试版）</p>
+            <p>如需启用AI智能总结，请充值Anthropic API</p>
         </div>
         </div>
     </body>
@@ -201,22 +168,22 @@ def send_email(recipient, subject, html_content):
         server.send_message(msg)
         server.quit()
         
-        print("✓ 邮件发送成功!")
+        print("邮件发送成功!")
         return True
         
     except Exception as e:
-        print(f"✗ 邮件发送失败: {str(e)}")
+        print(f"邮件发送失败: {str(e)}")
         return False
 
 def main():
     """主函数"""
     print("="*60)
-    print("AI博客每日摘要系统启动")
+    print("AI博客每日摘要系统启动（测试版 - 无AI总结）")
     print(f"运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
     # 1. 抓取博客
-    print("\n[1/4] 抓取博客文章...")
+    print("\n[1/3] 抓取博客文章...")
     posts = fetch_blog_posts(hours=24)
     print(f"共抓取到 {len(posts)} 篇新文章")
     
@@ -224,28 +191,24 @@ def main():
         print("\n今日无新文章，退出")
         return
     
-    # 2. AI总结
-    print("\n[2/4] 使用Claude AI总结文章...")
-    posts = summarize_with_claude(posts)
-    
-    # 3. 生成邮件
-    print("\n[3/4] 生成邮件内容...")
+    # 2. 生成邮件（跳过AI总结）
+    print("\n[2/3] 生成邮件内容（使用原始摘要）...")
     html_content = create_email_html(posts)
     
-    # 4. 发送邮件
-    print("\n[4/4] 发送邮件...")
+    # 3. 发送邮件
+    print("\n[3/3] 发送邮件...")
     recipient = "liuxialu615@gmail.com"
-    subject = f"AI博客每日摘要 - {datetime.now().strftime('%Y年%m月%d日')} ({len(posts)}篇新文章)"
+    subject = f"AI博客每日摘要（测试版）- {datetime.now().strftime('%Y年%m月%d日')} ({len(posts)}篇新文章)"
     
     success = send_email(recipient, subject, html_content)
     
     if success:
         print("\n" + "="*60)
-        print("✓ 任务完成!")
+        print("任务完成!")
         print("="*60)
     else:
         print("\n" + "="*60)
-        print("✗ 任务失败")
+        print("任务失败")
         print("="*60)
 
 if __name__ == "__main__":
