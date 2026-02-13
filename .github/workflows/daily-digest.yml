@@ -36,7 +36,7 @@ jobs:
       run: |
         python main.py
 ```
-
+ 
 4. 点击 **"Commit changes"**
 5. 再次点击弹窗中的 **"Commit changes"**
 
