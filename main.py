@@ -14,6 +14,7 @@ import os
 import json
 import time
 from bs4 import BeautifulSoup
+import re
 
 # 配置信息
 BLOGS = {
@@ -24,6 +25,28 @@ BLOGS = {
     "Google AI Blog": "https://ai.googleblog.com/feeds/posts/default",
     "DeepMind Blog": "https://deepmind.google/blog/rss.xml",
 }
+
+def clean_text(text):
+    """彻底清理文本中的特殊字符"""
+    if not text:
+        return ""
+    
+    # 替换各种空白字符为普通空格
+    text = re.sub(r'[\xa0\u00a0\u2000-\u200f\u2028-\u202f\u3000]', ' ', text)
+    
+    # 移除其他控制字符
+    text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
+    
+    # 规范化多个空格为单个空格
+    text = re.sub(r'\s+', ' ', text)
+    
+    # 移除首尾空格
+    text = text.strip()
+    
+    # 确保是UTF-8编码
+    text = text.encode('utf-8', errors='ignore').decode('utf-8')
+    
+    return text
 
 def fetch_blog_posts(hours=24):
     """抓取最近24小时的博客文章"""
@@ -55,15 +78,19 @@ def fetch_blog_posts(hours=24):
                     soup = BeautifulSoup(content, 'html.parser')
                     clean_content = soup.get_text()
                     
+                    # 彻底清理特殊字符
+                    clean_content = clean_text(clean_content)
+                    title = clean_text(entry.title if hasattr(entry, 'title') else 'Untitled')
+                    
                     posts.append({
                         'blog': blog_name,
-                        'title': entry.title if hasattr(entry, 'title') else 'Untitled',
+                        'title': title,
                         'link': entry.link if hasattr(entry, 'link') else '',
-                        'content': clean_content[:500],  # 限制长度
+                        'content': clean_content[:500],
                         'date': pub_date.strftime('%Y-%m-%d %H:%M') if pub_date else 'Unknown',
                         'summary': clean_content[:200] + '...' if len(clean_content) > 200 else clean_content
                     })
-                    print(f"  发现新文章: {entry.title}")
+                    print(f"  发现新文章: {title[:50]}")
         
         except Exception as e:
             print(f"  抓取 {blog_name} 失败: {str(e)}")
@@ -113,17 +140,12 @@ def create_email_html(posts):
     """
     
     for post in posts:
-        # 确保所有文本都是UTF-8编码
-        title = post['title'].encode('utf-8', errors='ignore').decode('utf-8')
-        blog = post['blog'].encode('utf-8', errors='ignore').decode('utf-8')
-        summary = post['summary'].encode('utf-8', errors='ignore').decode('utf-8')
-        
         html += f"""
             <div class="post">
-                <div class="post-title">{title}</div>
-                <div class="post-meta">来源: {blog} | 发布时间: {post['date']}</div>
+                <div class="post-title">{post['title']}</div>
+                <div class="post-meta">来源: {post['blog']} | 发布时间: {post['date']}</div>
                 <div class="post-summary">
-                    {summary}
+                    {post['summary']}
                 </div>
                 <a href="{post['link']}" class="post-link">阅读原文 →</a>
             </div>
@@ -153,6 +175,9 @@ def send_email(recipient, subject, html_content):
         return False
     
     try:
+        # 清理主题中的特殊字符
+        subject = clean_text(subject)
+        
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = sender_email
@@ -198,7 +223,7 @@ def main():
     # 3. 发送邮件
     print("\n[3/3] 发送邮件...")
     recipient = "liuxialu615@gmail.com"
-    subject = f"AI博客每日摘要（测试版）- {datetime.now().strftime('%Y年%m月%d日')} ({len(posts)}篇新文章)"
+    subject = f"AI Blog Digest - {datetime.now().strftime('%Y-%m-%d')} ({len(posts)} articles)"
     
     success = send_email(recipient, subject, html_content)
     
