@@ -35,4 +35,3 @@ jobs:
         SMTP_PORT: ${{ secrets.SMTP_PORT }}
       run: |
         python main.py
-
